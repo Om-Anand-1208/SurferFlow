@@ -281,7 +281,7 @@ export class Figure {
         this.bob = damp(this.bob, bobWant, 18, h);
 
         // Crouch: a little at running speed, a lot on the board.
-        const crouch = (0.14 * clamp(speed / 2.5, 0, 1) + 0.04 * run) * (1 - surf)
+        const crouch = (0.035 * clamp(speed / 2.5, 0, 1) + 0.025 * run) * (1 - surf)
             + surf * (0.165 + 0.05 * ch.speed01);
         this.hipY = damp(this.hipY, HIP_HEIGHT - crouch, 9, h);
 
@@ -308,31 +308,22 @@ export class Figure {
         composeBasis(ch.facing + twist, this.pitch, this.roll);
         this._setBone(B_ROOT, gx, rootY, gz, _axes[3], _axes[4], _axes[5], _axes[6], _axes[7], _axes[8]);
 
-        // Carry the board upright behind the rider, turned broadside toward the
-        // opening camera. When surf starts it eases back to the rider's forward
-        // axis and under the feet. The deck centre is anchored separately from
-        // the bone origin: rotating the carried board must not swing it out to
-        // the rider's side, and the surf pose must still sit on the surface.
+        // Carry the board lengthwise under the right arm, with its deck vertical.
+        // Anchor the board centre explicitly so rotation around the bind-pose
+        // bone does not send it away from the hand during the surf transition.
         const carry = 1 - surf;
-        const boardPitch = -Math.PI * 0.5 * carry;
-        // The opening camera sits to the rider's left-front. A roughly quarter
-        // turn makes the deck face that view, so its full width reads instead
-        // of collapsing to a thin edge. It blends to zero in the level ride pose.
-        const boardFacing = ch.facing + carry * Math.PI * 0.56;
-        const boardCenterBack = 0.40 * carry;
-        const bindCenterOffset = 0.82 * Math.sin(-boardPitch);
-        const boardX = gx
-            - Math.sin(ch.facing) * boardCenterBack
-            - Math.sin(boardFacing) * bindCenterOffset;
-        const boardZ = gz
-            - Math.cos(ch.facing) * boardCenterBack
-            - Math.cos(boardFacing) * bindCenterOffset;
-        composeBasis(boardFacing, boardPitch, ch.lean * surf * 0.12);
+        composeBasis(ch.facing, 0, carry * Math.PI * 0.5 + ch.lean * surf * 0.12);
+        const boardCenterX = gx + Math.cos(ch.facing) * 0.30 * carry
+            + Math.sin(ch.facing) * 0.06 * carry;
+        const boardCenterZ = gz - Math.sin(ch.facing) * 0.30 * carry
+            + Math.cos(ch.facing) * 0.06 * carry;
+        const boardCenterY = groundY + 1.06 * carry + 0.022 * surf;
+        const boardBindOffset = HIP_HEIGHT - 0.119;
         this._setBone(
             B_BOARD,
-            boardX,
-            groundY + HIP_HEIGHT - surf * (HIP_HEIGHT - BOARD_PIVOT_HEIGHT),
-            boardZ,
+            boardCenterX + _axes[3] * boardBindOffset,
+            boardCenterY + _axes[4] * boardBindOffset,
+            boardCenterZ + _axes[5] * boardBindOffset,
             _axes[3], _axes[4], _axes[5], _axes[6], _axes[7], _axes[8]
         );
 
@@ -608,6 +599,13 @@ export class Figure {
             let ty = _sh[1] + fY * (sw * 0.38) - uY * (0.43 - run * 0.10) + rY * (sgn * 0.065);
             let tz = _sh[2] + fZ * (sw * 0.38) - uZ * (0.43 - run * 0.10) + rZ * (sgn * 0.065);
             ty += idle * sgn;
+
+            // The right hand stays at the board rail while carrying it.
+            if (a === 1) {
+                tx = _sh[0] + rX * 0.23 - uX * 0.34 + fX * 0.06;
+                ty = _sh[1] + rY * 0.23 - uY * 0.34 + fY * 0.06;
+                tz = _sh[2] + rZ * 0.23 - uZ * 0.34 + fZ * 0.06;
+            }
 
             // ---- surf target: out, forward and a little down ----------------
             if (surf > 0.001) {

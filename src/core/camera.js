@@ -170,7 +170,11 @@ export class CameraRig {
 
         _desired.copyFrom(this.pivot);
         _desired.addInPlace(_tmp.copyFrom(_fwd).scaleInPlace(-this.distance));
-        _desired.addInPlace(_tmp.copyFrom(_right).scaleInPlace(this.shoulder));
+        // Keep the rider and carried board in view on narrow portrait screens.
+        const engine = this.scene.getEngine();
+        const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
+        const shoulder = this.shoulder * Scalar.Clamp((aspect - 0.45) / 0.8, 0, 1);
+        _desired.addInPlace(_tmp.copyFrom(_right).scaleInPlace(shoulder));
         _desired.addInPlace(_tmp.copyFrom(_up).scaleInPlace(0.22));
 
         // ---- keep the arm out of the snow --------------------------------

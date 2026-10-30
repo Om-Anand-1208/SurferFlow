@@ -8,6 +8,7 @@
  * shoreline and surf lane bare, and fades its outer ring into the sky haze.
  */
 
+import vegetationAssets from "../assets/vegetation.json";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
@@ -58,10 +59,10 @@ export class CoastalVegetation {
         this._settingsSettle = 0;
 
         this.items = [
-            this._createItem("duneGrass", makeGrassGeometry(), 1, Math.min(220, RADIUS)),
-            this._createItem("coastalScrub", makeScrubGeometry(), 2, Math.min(370, RADIUS)),
-            this._createItem("coastalPines", makePineGeometry(), 2, RADIUS),
-            this._createItem("coastalOaks", makeOakGeometry(), 2, RADIUS),
+            this._createItem("duneGrass", assetGeometry("grass"), 1, Math.min(220, RADIUS)),
+            this._createItem("coastalScrub", assetGeometry("scrub"), 2, Math.min(370, RADIUS)),
+            this._createItem("coastalPines", assetGeometry("pine"), 2, RADIUS),
+            this._createItem("coastalOaks", assetGeometry("oak"), 2, RADIUS),
         ];
 
         for (const item of this.items) {
@@ -522,237 +523,13 @@ function clamp(v, lo, hi) {
     return Math.max(lo, Math.min(hi, v));
 }
 
-class GeometryBuilder {
-    constructor() {
-        this.positions = [];
-        this.normals = [];
-        this.colors = [];
-        this.indices = [];
-    }
-
-    vertex(x, y, z, color) {
-        this.positions.push(x, y, z);
-        this.normals.push(0, 0, 0);
-        this.colors.push(color[0], color[1], color[2], 1);
-        return this.positions.length / 3 - 1;
-    }
-
-    triangle(a, b, c) {
-        this.indices.push(a, b, c);
-    }
-
-    finish(name) {
-        const normals = computeNormals(this.positions, this.indices);
-        const data = new VertexData();
-        data.positions = new Float32Array(this.positions);
-        data.normals = normals;
-        data.colors = new Float32Array(this.colors);
-        data.indices = new Uint32Array(this.indices);
-        data.name = name;
-        return data;
-    }
-}
-
-function computeNormals(positions, indices) {
-    const normals = new Float32Array(positions.length);
-    for (let i = 0; i < indices.length; i += 3) {
-        const a = indices[i] * 3;
-        const b = indices[i + 1] * 3;
-        const c = indices[i + 2] * 3;
-        const ux = positions[b] - positions[a];
-        const uy = positions[b + 1] - positions[a + 1];
-        const uz = positions[b + 2] - positions[a + 2];
-        const vx = positions[c] - positions[a];
-        const vy = positions[c + 1] - positions[a + 1];
-        const vz = positions[c + 2] - positions[a + 2];
-        const nx = uy * vz - uz * vy;
-        const ny = uz * vx - ux * vz;
-        const nz = ux * vy - uy * vx;
-        for (const o of [a, b, c]) {
-            normals[o] += nx;
-            normals[o + 1] += ny;
-            normals[o + 2] += nz;
-        }
-    }
-    for (let i = 0; i < normals.length; i += 3) {
-        const len = Math.hypot(normals[i], normals[i + 1], normals[i + 2]) || 1;
-        normals[i] /= len;
-        normals[i + 1] /= len;
-        normals[i + 2] /= len;
-    }
-    return normals;
-}
-
-function makeGrassGeometry() {
-    const b = new GeometryBuilder();
-    const count = 12;
-    for (let i = 0; i < count; i++) {
-        const a = (i / count) * PI2 + (i % 3) * 0.19;
-        const h = 0.72 + ((i * 37) % 7) * 0.085;
-        const w = 0.04 + ((i * 19) % 5) * 0.007;
-        const color = i % 3 === 0 ? [0.17, 0.30, 0.072] : i % 3 === 1 ? [0.13, 0.25, 0.052] : [0.22, 0.36, 0.092];
-        addBlade(b, Math.cos(a), Math.sin(a), h, w, color);
-    }
-    // Tall golden seed heads make the foredune read as sea oats.
-    for (let i = 0; i < 3; i++) {
-        const x = (i - 1) * 0.12;
-        const z = i * 0.09;
-        const h = 1.12 + i * 0.12;
-        addCylinder(b, x, 0, z, 0.008, 0.004, h, 4,
-            [0.18, 0.25, 0.055], [0.39, 0.35, 0.12]);
-        for (let j = 0; j < 3; j++) {
-            addEllipsoid(b, x + 0.025 * j, h - j * 0.065, z,
-                0.026, 0.045, 0.013, 4, 2, [0.35, 0.25, 0.07], [0.63, 0.48, 0.19]);
-        }
-    }
-    return b.finish("coastal sea oats");
-}
-
-function addBlade(b, dx, dz, height, width, color) {
-    const sideX = -dz;
-    const sideZ = dx;
-    const lean = 0.22 * height;
-    let previous = null;
-    const ts = [0, 0.52, 1];
-    for (let r = 0; r < ts.length; r++) {
-        const t = ts[r];
-        const cx = dx * lean * t * t;
-        const cz = dz * lean * t * t;
-        const taper = r === 0 ? 0.42 : r === 1 ? 0.74 : 0.012;
-        const half = width * taper;
-        const c = [
-            color[0] * (0.74 + 0.32 * t),
-            color[1] * (0.80 + 0.30 * t),
-            color[2] * (0.74 + 0.33 * t),
-        ];
-        const left = b.vertex(cx - sideX * half, height * t, cz - sideZ * half, c);
-        const right = b.vertex(cx + sideX * half, height * t, cz + sideZ * half, c);
-        if (previous) {
-            b.triangle(previous[0], previous[1], left);
-            b.triangle(previous[1], right, left);
-        }
-        previous = [left, right];
-    }
-}
-
-function makeScrubGeometry() {
-    const b = new GeometryBuilder();
-    addCylinder(b, 0, 0, 0, 0.095, 0.055, 0.74, 7, [0.105, 0.067, 0.027], [0.17, 0.10, 0.035]);
-    const lobes = [
-        [-0.30, 0.51, -0.08, 0.36, 0.42, 0.32],
-        [0.24, 0.56, 0.12, 0.40, 0.48, 0.37],
-        [-0.04, 0.82, 0.02, 0.39, 0.44, 0.35],
-        [0.03, 0.43, 0.34, 0.32, 0.35, 0.33],
-    ];
-    for (let i = 0; i < lobes.length; i++) {
-        const l = lobes[i];
-        const low = i % 2 ? [0.058, 0.15, 0.032] : [0.079, 0.18, 0.04];
-        const high = i % 2 ? [0.13, 0.24, 0.057] : [0.16, 0.27, 0.067];
-        addEllipsoid(b, l[0], l[1], l[2], l[3], l[4], l[5], 7, 4, low, high);
-    }
-    return b.finish("coastal scrub");
-}
-
-function makeOakGeometry() {
-    const b = new GeometryBuilder();
-    addCylinder(b, 0, 0, 0, 0.22, 0.09, 3.3, 8,
-        [0.095, 0.060, 0.028], [0.16, 0.10, 0.045]);
-    // Salt-wind shaped broad canopy, with overlapping asymmetric crowns.
-    const crowns = [[-1.0, 3.2, 0.1, 1.45, 0.95, 1.25],
-        [0.9, 3.55, -0.35, 1.35, 1.1, 1.30],
-        [0.1, 4.1, 0.3, 1.6, 1.05, 1.45],
-        [0.4, 2.9, 1.0, 1.15, 0.85, 1.0]];
-    for (const c of crowns) {
-        addEllipsoid(b, ...c, 10, 6, [0.055, 0.14, 0.035], [0.16, 0.29, 0.07]);
-    }
-    return b.finish("spreading coastal oak");
-}
-
-function makePineGeometry() {
-    const b = new GeometryBuilder();
-    addCylinder(b, 0, 0, 0, 0.13, 0.035, 4.8, 7, [0.105, 0.055, 0.025], [0.14, 0.07, 0.028]);
-    const tiers = [
-        [1.28, 2.05, 1.18, 0.43, -0.16],
-        [2.14, 1.77, 0.93, 0.48, 0.13],
-        [2.95, 1.53, 0.71, 0.44, -0.11],
-        [3.68, 1.24, 0.47, 0.43, 0.08],
-    ];
-    for (let i = 0; i < tiers.length; i++) {
-        const t = tiers[i];
-        const base = i % 2 ? [0.05, 0.16, 0.051] : [0.061, 0.19, 0.063];
-        const tip = i % 2 ? [0.11, 0.25, 0.077] : [0.135, 0.28, 0.09];
-        addCanopyTier(b, t[4], t[0], t[2], t[1], t[3], 8, base, tip);
-    }
-    return b.finish("wind shaped coastal pine");
-}
-
-function addCylinder(b, x, z, y0, r0, r1, height, sides, bottomColor, topColor) {
-    const lower = [];
-    const upper = [];
-    for (let i = 0; i < sides; i++) {
-        const a = (i / sides) * PI2;
-        const ca = Math.cos(a), sa = Math.sin(a);
-        const blend = i / (sides - 1);
-        const color = [
-            bottomColor[0] * (1 - blend) + topColor[0] * blend,
-            bottomColor[1] * (1 - blend) + topColor[1] * blend,
-            bottomColor[2] * (1 - blend) + topColor[2] * blend,
-        ];
-        lower.push(b.vertex(x + ca * r0, y0, z + sa * r0, bottomColor));
-        upper.push(b.vertex(x + ca * r1, y0 + height, z + sa * r1, color));
-    }
-    for (let i = 0; i < sides; i++) {
-        const j = (i + 1) % sides;
-        b.triangle(lower[i], lower[j], upper[i]);
-        b.triangle(lower[j], upper[j], upper[i]);
-    }
-}
-
-function addEllipsoid(b, cx, cy, cz, rx, ry, rz, sides, rings, low, high) {
-    const rows = [];
-    for (let r = 0; r <= rings; r++) {
-        const v = r / rings;
-        const phi = -Math.PI * 0.5 + v * Math.PI;
-        const cp = Math.cos(phi), sp = Math.sin(phi);
-        const row = [];
-        for (let i = 0; i < sides; i++) {
-            const a = (i / sides) * PI2;
-            const shade = 0.83 + 0.24 * Math.max(0, Math.cos(a - 0.8));
-            const color = [
-                (low[0] * (1 - v) + high[0] * v) * shade,
-                (low[1] * (1 - v) + high[1] * v) * shade,
-                (low[2] * (1 - v) + high[2] * v) * shade,
-            ];
-            row.push(b.vertex(cx + Math.cos(a) * cp * rx, cy + sp * ry, cz + Math.sin(a) * cp * rz, color));
-        }
-        rows.push(row);
-    }
-    for (let r = 0; r < rings; r++) {
-        for (let i = 0; i < sides; i++) {
-            const j = (i + 1) % sides;
-            b.triangle(rows[r][i], rows[r][j], rows[r + 1][i]);
-            b.triangle(rows[r][j], rows[r + 1][j], rows[r + 1][i]);
-        }
-    }
-}
-
-function addCanopyTier(b, x, baseY, radius, height, lean, sides, baseColor, tipColor) {
-    const lower = [];
-    const middle = [];
-    const tip = b.vertex(x + lean, baseY + height, 0, tipColor);
-    const midY = baseY + height * 0.55;
-    for (let i = 0; i < sides; i++) {
-        const a = (i / sides) * PI2;
-        const ca = Math.cos(a), sa = Math.sin(a);
-        const tint = 0.86 + 0.28 * (0.5 + 0.5 * ca);
-        lower.push(b.vertex(x + ca * radius, baseY, sa * radius * 0.82, baseColor));
-        middle.push(b.vertex(x + ca * radius * 0.62 + lean * 0.5, midY, sa * radius * 0.52,
-            [tipColor[0] * tint, tipColor[1] * tint, tipColor[2] * tint]));
-    }
-    for (let i = 0; i < sides; i++) {
-        const j = (i + 1) % sides;
-        b.triangle(lower[i], lower[j], middle[i]);
-        b.triangle(lower[j], middle[j], middle[i]);
-        b.triangle(middle[i], middle[j], tip);
-    }
+// Blender exports use the same local axes and vertex colors as the instanced shader.
+function assetGeometry(name) {
+    const asset = vegetationAssets[name];
+    const data = new VertexData();
+    data.positions = asset.positions;
+    data.normals = asset.normals;
+    data.colors = asset.colors;
+    data.indices = asset.indices;
+    return data;
 }

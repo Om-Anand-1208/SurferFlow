@@ -4,8 +4,9 @@ A procedural coastal surfing playground built with **Babylon.js, WebGL 2 and
 native GLSL ES 3.00**. Explore a meandering beach, head into the ocean and ride
 changing swells through a five-minute day and night cycle.
 
-The coast, water, vegetation, rider, surfboard and stars are generated from code.
-No downloaded character models, animation clips or texture assets are required.
+The coast, water and stars are generated from code. The surfboard, vegetation
+and Blender-edited rider use local meshes; no downloaded models or texture assets
+are required.
 
 ## Features
 
@@ -15,7 +16,7 @@ No downloaded character models, animation clips or texture assets are required.
 - Walking, running, surfing and jumps that retain forward momentum.
 - Sunrise, sunset, moonlight and twinkling stars in a five-minute cycle.
 - Open beach sand with sea oats, dune scrub, pines and coastal oaks farther inland.
-- A procedural rider with board shorts, a sleeveless top, hair and sunglasses.
+- A Blender-edited rider with board shorts, a sleeveless top, hair and sunglasses.
 - Native GLSL shaders, cascaded shadows and temporal antialiasing.
 
 ## Run locally
@@ -49,8 +50,10 @@ the output directory. The deployed game does not require a backend server.
 | Input | Action |
 |---|---|
 | Click the scene | Capture the pointer for mouse look |
-| Mouse / drag | Look around; drag is the fallback when pointer lock is unavailable |
-| Mouse wheel while pointer is captured | Zoom |
+| Mouse / drag | Look around; drag works when pointer lock is unavailable |
+| Trackpad two-finger scroll / mouse wheel | Zoom; horizontal scrolling turns the camera |
+| Trackpad pinch | Zoom |
+| Touchscreen | Drag to look, pinch or use +/− to zoom; use the movement, jump, and speed buttons |
 | WASD / arrow keys | Move relative to the camera |
 | Shift + movement | Run on land or surf faster |
 | Space | Jump on land or water |
@@ -107,6 +110,18 @@ share the body's skinning, shadow and depth passes.
 Rendering includes cascaded shadows, a camera depth prepass, temporal antialiasing,
 bloom, tone mapping, sharpening and subtle grain. Depth of field is available but
 **disabled by default**.
+
+## Blender assets
+
+The editable source files are `assets/surfboard.blend`, `assets/rider.blend` and
+`assets/coastal_vegetation.blend`. The rider starts from the original procedural
+mesh, retains its skin weights, and has a subtle Blender hair adjustment. Their generated geometry is checked in under
+`src/assets/` and uses the existing custom skinning and vegetation shaders.
+Run the scripts in `tools/` with Blender in background mode to rebuild the scenes
+and exports. The board and vegetation scripts rebuild their scenes, so edit the
+scripts for reproducible changes. Export rider changes with
+`blender --background assets/rider.blend --python tools/export_rider.py`; preserve
+the point attributes that carry the game’s material and skinning data.
 
 ## Development
 

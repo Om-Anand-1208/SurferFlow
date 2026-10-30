@@ -27,22 +27,74 @@ export const input = {
 const keys = Object.create(null);
 
 const LOOK_SCALE = 0.0022;
+const touchMove = { x: 0, z: 0, sprint: false };
 
 /**
  * @param {HTMLCanvasElement} canvas
  */
 export function initInput(canvas) {
-    let dragging = false;
+    let dragPointer = null;
     let lastX = 0, lastY = 0;
-    canvas.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return;
-        dragging = true;
-        lastX = e.clientX; lastY = e.clientY;
+    let dragDistance = 0;
+    let lastPointerType = "mouse";
+    const lookTouches = new Map();
+    let pinchDistance = 0;
+    function touchDistance() {
+        const [a, b] = [...lookTouches.values()];
+        return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+    }
+    canvas.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        lastPointerType = e.pointerType;
+        canvas.setPointerCapture(e.pointerId);
+        if (e.pointerType === "touch") {
+            lookTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (lookTouches.size >= 2) { pinchDistance = touchDistance(); return; }
+        }
+        dragPointer = e.pointerId;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        dragDistance = 0;
     });
-    document.addEventListener("mouseup", () => { dragging = false; });
+    canvas.addEventListener("pointermove", (e) => {
+        if (e.pointerType === "touch" && lookTouches.has(e.pointerId)) {
+            lookTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (lookTouches.size >= 2) {
+                const distance = touchDistance();
+                if (pinchDistance > 0 && distance > 0) {
+                    input.zoomDelta -= Math.log(distance / pinchDistance) * 2.5;
+                }
+                pinchDistance = distance;
+                return;
+            }
+        }
+        if (input.locked || e.pointerId !== dragPointer) return;
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        dragDistance += Math.abs(dx) + Math.abs(dy);
+        input.lookX += dx * LOOK_SCALE;
+        input.lookY += dy * LOOK_SCALE;
+    });
+    const stopDrag = (e) => {
+        lookTouches.delete(e.pointerId);
+        pinchDistance = touchDistance();
+        if (e.pointerId === dragPointer || lookTouches.size === 1) {
+            const remaining = lookTouches.entries().next();
+            if (!remaining.done) {
+                dragPointer = remaining.value[0];
+                lastX = remaining.value[1].x;
+                lastY = remaining.value[1].y;
+            } else dragPointer = null;
+        }
+    };
+    canvas.addEventListener("pointerup", stopDrag);
+    canvas.addEventListener("pointercancel", stopDrag);
+    canvas.addEventListener("lostpointercapture", stopDrag);
     canvas.addEventListener("click", () => {
-        if (!input.locked) {
-            // Embedded browsers can reject pointer lock; drag-look still works.
+        // A drag should not unexpectedly lock the pointer when released.
+        if (lastPointerType === "mouse" && !input.locked && dragDistance < 4) {
             try { canvas.requestPointerLock()?.catch(() => {}); } catch { /* drag fallback */ }
         }
     });
@@ -54,28 +106,76 @@ export function initInput(canvas) {
             for (const k in keys) keys[k] = false;
             input.jumpPressed = false;
             input.sprint = false;
-
         }
     });
 
     document.addEventListener("mousemove", (e) => {
-        if (!input.locked && !dragging) return;
-        const dx = input.locked ? e.movementX : e.clientX - lastX;
-        const dy = input.locked ? e.movementY : e.clientY - lastY;
-        lastX = e.clientX; lastY = e.clientY;
-        input.lookX += dx * LOOK_SCALE;
-        input.lookY += dy * LOOK_SCALE;
+        if (!input.locked) return;
+        input.lookX += e.movementX * LOOK_SCALE;
+        input.lookY += e.movementY * LOOK_SCALE;
     });
 
-    document.addEventListener(
-        "wheel",
-        (e) => {
-            if (!input.locked) return;
+    // Wheel, two-finger trackpad scroll and browser pinch gestures zoom even
+    // when pointer lock is unavailable. Horizontal scroll turns the camera.
+    canvas.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1;
+        input.zoomDelta += e.deltaY * scale * 0.0016;
+        if (!e.ctrlKey && !e.metaKey) input.lookX += e.deltaX * scale * LOOK_SCALE;
+    }, { passive: false });
+    document.getElementById("zoom-in")?.addEventListener("click", () => { input.zoomDelta -= 0.65; });
+    document.getElementById("zoom-out")?.addEventListener("click", () => { input.zoomDelta += 0.65; });
+
+    // Each direction tracks its own pointer so two buttons can be held for
+    // diagonal movement while another finger controls the camera.
+    const moveButtons = [
+        ["move-up", 0, 1], ["move-down", 0, -1],
+        ["move-left", -1, 0], ["move-right", 1, 0],
+    ];
+    const heldMoves = new Map();
+    function updateTouchMove() {
+        let x = 0, z = 0;
+        for (const move of heldMoves.values()) { x += move.x; z += move.z; }
+        touchMove.x = Math.max(-1, Math.min(1, x));
+        touchMove.z = Math.max(-1, Math.min(1, z));
+    }
+    for (const [id, x, z] of moveButtons) {
+        const button = document.getElementById(id);
+        button?.addEventListener("pointerdown", (e) => {
             e.preventDefault();
-            input.zoomDelta += e.deltaY * 0.0016;
-        },
-        { passive: false }
-    );
+            heldMoves.set(e.pointerId, { x, z, button });
+            button.classList.add("active");
+            button.setPointerCapture(e.pointerId);
+            updateTouchMove();
+        });
+        const release = (e) => {
+            if (heldMoves.get(e.pointerId)?.button !== button) return;
+            heldMoves.delete(e.pointerId);
+            if (![...heldMoves.values()].some((move) => move.button === button)) button.classList.remove("active");
+            updateTouchMove();
+        };
+        for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) button?.addEventListener(event, release);
+    }
+    function resetPad() {
+        for (const move of heldMoves.values()) move.button.classList.remove("active");
+        heldMoves.clear();
+        updateTouchMove();
+    }
+
+    const jump = document.getElementById("touch-jump");
+    jump?.addEventListener("pointerdown", (e) => { e.preventDefault(); input.jumpPressed = true; });
+    const sprint = document.getElementById("touch-sprint");
+    let sprintPointer = null;
+    sprint?.addEventListener("pointerdown", (e) => {
+        if (sprintPointer !== null) return;
+        e.preventDefault(); sprintPointer = e.pointerId; touchMove.sprint = true;
+        sprint.classList.add("active"); sprint.setPointerCapture(e.pointerId);
+    });
+    function resetSprint(e) {
+        if (e && e.pointerId !== sprintPointer) return;
+        sprintPointer = null; touchMove.sprint = false; sprint?.classList.remove("active");
+    }
+    for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) sprint?.addEventListener(event, resetSprint);
 
     window.addEventListener("keydown", (e) => {
         if (e.code === "Space" && input.locked) e.preventDefault();
@@ -95,14 +195,18 @@ export function initInput(canvas) {
         for (const k in keys) keys[k] = false;
         input.jumpPressed = false;
         input.sprint = false;
-
+        resetPad();
+        resetSprint();
+        lookTouches.clear();
+        dragPointer = null;
+        pinchDistance = 0;
     });
 }
 
 /** Resolve held keys into movement axes. Called once per frame before update. */
 export function pollInput() {
-    let x = 0;
-    let z = 0;
+    let x = touchMove.x;
+    let z = touchMove.z;
     if (keys.KeyW || keys.ArrowUp) z += 1;
     if (keys.KeyS || keys.ArrowDown) z -= 1;
     if (keys.KeyD || keys.ArrowRight) x += 1;
@@ -117,7 +221,7 @@ export function pollInput() {
     input.moveX = x;
     input.moveZ = z;
     input.moving = len > 0.001;
-    input.sprint = !!(keys.ShiftLeft || keys.ShiftRight);
+    input.sprint = touchMove.sprint || !!(keys.ShiftLeft || keys.ShiftRight);
 }
 
 /** Clear per-frame accumulators. Called at the very end of the frame. */

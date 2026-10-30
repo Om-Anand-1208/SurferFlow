@@ -34,7 +34,7 @@ const GRAVITY = 18.0;
 /** Gait: metres of travel per full stride cycle, scaled by speed. */
 export function gaitStride(speed) {
     const run = Math.max(0, Math.min(1, (speed - WALK_SPEED) / (RUN_SPEED - WALK_SPEED)));
-    return 1.50 + 0.90 * run;
+    return 0.95 + 0.45 * run;
 }
 
 export class CharacterController {

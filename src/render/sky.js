@@ -1,7 +1,7 @@
 /**
  * Coastal day/night sky. A shared HDR texture supplies the visible dome,
  * ambient SH, water reflections and fog, so every surface follows one clock.
- * Sky bakes are coalesced and never overlap while the sun is moving.
+ * The visible sky updates continuously; ambient projections are blended between samples.
  */
 
 import { Vector2, Vector3, Color3 } from "@babylonjs/core/Maths/math";
@@ -72,6 +72,8 @@ export class Sky {
         this.groundBounce = new Color3(0, 0, 0);
         /** 36 floats: 9 SH coefficients as vec4, for the shader UBO. */
         this.sh = new Float32Array(36);
+        this._targetSH = new Float32Array(36);
+        this._hasSH = false;
 
         this._dirty = true;
 
@@ -181,9 +183,16 @@ export class Sky {
         this.solarDir.set(Math.sin(az) * ce, Math.sin(el), Math.cos(az) * ce);
         this.daylight = smooth01(-0.10, 0.18, this.solarDir.y);
         this.nightAmount = 1 - smooth01(-0.18, 0.02, this.solarDir.y);
-        // The shared direct-light vector follows the sun by day and moon by night.
-        this.sunDir.copyFrom(this.solarDir);
-        if (this.solarDir.y < 0) this.sunDir.scaleInPlace(-1);
+        // Turn the direct-light direction gradually from sun to moon through
+        // twilight; an instantaneous reversal makes shadows jump at the horizon.
+        const moonBlend = smooth01(0.02, 0.14, -this.solarDir.y);
+        const turn = Math.PI * moonBlend;
+        const cTurn = Math.cos(turn), sTurn = Math.sin(turn);
+        this.sunDir.set(
+            this.solarDir.x * cTurn - this.solarDir.z * sTurn,
+            Math.abs(this.solarDir.y),
+            this.solarDir.x * sTurn + this.solarDir.z * cTurn
+        ).normalize();
         if (this.solarDir.subtractToRef(this._bakedSolarDir, _dir).lengthSquared() > 0.0001
             || S.sunIntensity !== this._lastIntensity) this._dirty = true;
         this.sunScale = S.sunIntensity * SUN_SCALE_BASE;
@@ -221,11 +230,7 @@ export class Sky {
         this.sunColor.set(r / m, g / m, b / m);
     }
 
-    /**
-     * Rebake the LUTs if the sun moved. Safe to call every frame — it only does
-     * work when something actually changed, and it silently skips until the
-     * bake shader has finished compiling.
-     */
+    /** Advance the clock and update the visible sky and ambient lighting. */
     update(dt = 0) {
         if (S.skyMode === "time of day" && S.dayNightCycle) {
             S.timeOfDay = advanceClock(S.timeOfDay, dt, S.dayLengthMinutes);
@@ -236,6 +241,20 @@ export class Sky {
         this._prevUpdateAt = now;
         const targetExposure = 1 + this.nightAmount * 1.8;
         this.exposureScale += (targetExposure - this.exposureScale) * (1 - Math.exp(-visualDt * 1.8));
+        // The inexpensive sky gradient is rendered continuously so the visible
+        // sky and reflections follow the moving sun without half-second steps.
+        if (this.lut.isReady()) {
+            this._setBakeUniforms();
+            this.lut.render();
+        }
+        // Ambient coefficients come from a less frequent GPU readback. Ease to
+        // the new sample so lighting does not jump on each completed projection.
+        const blend = 1 - Math.exp(-visualDt * 4);
+        if (this._hasSH) {
+            for (let i = 0; i < this.sh.length; i++) {
+                this.sh[i] += (this._targetSH[i] - this.sh[i]) * blend;
+            }
+        }
         if (!this._dirty || this._solving || now - this._lastBakeAt < 500) return false;
         if (!this.lut.isReady() || !this.shLut.isReady()) return false;
         this._lastBakeAt = now;
@@ -254,13 +273,18 @@ export class Sky {
             this._bakedSolarDir.copyFrom(this.solarDir);
             this._lastIntensity = S.sunIntensity;
             this._dirty = false;
-            // Sky and reflections share the same radiance. Two bakes let the
-            // sand bounce settle without repeatedly reading back a moving sun.
-            this.bake();
+            // Project one low-resolution sample per update. The displayed SH
+            // eases towards it in update(), avoiding repeated GPU readbacks.
+            this._setBakeUniforms();
+            this.shLut.render();
             await this.projectSH();
+            if (!this._hasSH) {
+                this.sh.set(this._targetSH);
+                this._hasSH = true;
+            }
             this._updateGroundBounce();
-            this.bake();
-            await this.projectSH();
+            this._setBakeUniforms();
+            this.lut.render();
         } finally {
             this._solving = false;
         }
@@ -310,12 +334,6 @@ export class Sky {
         }
     }
 
-    bake() {
-        this._setBakeUniforms();
-        this.lut.render();
-        this.shLut.render();
-    }
-
     /**
      * Project the baked sky into 9 SH coefficients on the CPU.
      *
@@ -328,7 +346,7 @@ export class Sky {
         if (!data) return;
         const px = /** @type {Float32Array} */ (data);
 
-        const sh = this.sh;
+        const sh = this._targetSH;
         const Y = _shBasis;
         sh.fill(0);
 
