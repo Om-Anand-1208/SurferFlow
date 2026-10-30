@@ -17,6 +17,8 @@ are required.
 - Sunrise, sunset, moonlight and twinkling stars in a five-minute cycle.
 - Open beach sand with sea oats, dune scrub, pines and coastal oaks farther inland.
 - A Blender-edited rider with board shorts, a sleeveless top, hair and sunglasses.
+- Responsive phone controls, including directional buttons, camera drag and pinch zoom.
+- Trackpad scrolling and pinch gestures for camera zoom.
 - Native GLSL shaders, cascaded shadows and temporal antialiasing.
 
 ## Run locally
@@ -30,7 +32,12 @@ npm run dev
 
 Open the local address printed by Vite, normally `http://localhost:5173`.
 A browser and graphics device with **WebGL 2 support** are required.
-The loading screen waits for shader compilation before the scene starts.
+The loading screen waits for shader compilation before the scene starts. Leave
+the development server running while you play.
+
+To try the game on a phone on the same network, run `npm run dev -- --host`
+and open the network address printed by Vite in the phone browser. The phone
+also needs WebGL 2; performance depends on its graphics hardware.
 
 ### Production build
 
@@ -53,7 +60,8 @@ the output directory. The deployed game does not require a backend server.
 | Mouse / drag | Look around; drag works when pointer lock is unavailable |
 | Trackpad two-finger scroll / mouse wheel | Zoom; horizontal scrolling turns the camera |
 | Trackpad pinch | Zoom |
-| Touchscreen | Drag to look, pinch or use +/− to zoom; use the movement, jump, and speed buttons |
+| Touchscreen | Hold the directional buttons to move; drag the scene with one finger to look; pinch with two fingers or use +/− to zoom |
+| Touchscreen action buttons | Tap Jump; hold Speed while moving |
 | WASD / arrow keys | Move relative to the camera |
 | Shift + movement | Run on land or surf faster |
 | Space | Jump on land or water |
@@ -64,9 +72,6 @@ the output directory. The deployed game does not require a backend server.
 Moving jumps keep the horizontal velocity at takeoff, even when movement keys
 are released in the air. Stationary jumps stay in place. The rider and board lift
 together during water jumps. Normal movement controls resume on landing.
-
-There are no number-key spells, hollow barrel-wave obstacles or F1 settings page.
-The screen also has no speed streaks, radial speed blur or speed-based FOV widening.
 
 ## Ocean and coast
 
@@ -96,16 +101,18 @@ The scene starts at **10:00**. A full sunrise, daylight, sunset and moonlit nigh
 lasts **five minutes** by default. The sun and moon follow opposite continuous arcs,
 and seeded spherical star positions provide a stable, scattered night sky.
 
-The visible sky, ambient light, water reflections and haze share the same sky
-texture. Adaptive exposure eases between day and night, and the clock advances
-independently from the movement simulation timestep.
+The visible sky, water reflections and haze use a shared sky texture. Ambient
+lighting is projected from the sky and blended between updates; the direct-light
+direction transitions through twilight. Adaptive exposure eases between day and
+night, and the clock advances independently from the movement simulation timestep.
 
 ## Rider and rendering
 
 The rider wears a cream sleeveless top, teal board shorts, blue sunglasses and
-brown swept hair, with exposed arms, legs and bare feet. Procedural skeleton
-animation and planted-foot IK drive walking and running. Hair and accessories
-share the body's skinning, shadow and depth passes.
+brown swept hair, with exposed arms, legs and bare feet. The board is carried
+lengthwise at the rider's side on land and moves beneath the feet in the water.
+Procedural skeleton animation and planted-foot IK drive walking and running. Hair
+and accessories share the body's skinning, shadow and depth passes.
 
 Rendering includes cascaded shadows, a camera depth prepass, temporal antialiasing,
 bloom, tone mapping, sharpening and subtle grain. Depth of field is available but
@@ -113,20 +120,36 @@ bloom, tone mapping, sharpening and subtle grain. Depth of field is available bu
 
 ## Blender assets
 
-The editable source files are `assets/surfboard.blend`, `assets/rider.blend` and
-`assets/coastal_vegetation.blend`. The rider starts from the original procedural
-mesh, retains its skin weights, and has a subtle Blender hair adjustment. Their generated geometry is checked in under
-`src/assets/` and uses the existing custom skinning and vegetation shaders.
-Run the scripts in `tools/` with Blender in background mode to rebuild the scenes
-and exports. The board and vegetation scripts rebuild their scenes, so edit the
-scripts for reproducible changes. Export rider changes with
-`blender --background assets/rider.blend --python tools/export_rider.py`; preserve
-the point attributes that carry the game’s material and skinning data.
+The editable source scenes are `assets/surfboard.blend`, `assets/rider.blend`
+and `assets/coastal_vegetation.blend`. Their exported geometry is checked in under
+`src/assets/` and uses the game's custom skinning and vegetation shaders. The
+rider began as the original procedural mesh and retains its skin weights, with a
+small Blender hair adjustment.
+
+Blender is only needed to edit or regenerate assets, not to run the game. To
+rebuild the board and vegetation scenes and their exported geometry, run:
+
+```sh
+blender --background --factory-startup --python tools/make_surfboard.py
+blender --background --factory-startup --python tools/make_vegetation.py
+```
+
+These two scripts **replace** their corresponding `.blend` scenes from the script,
+so edit the scripts for reproducible changes. To export edits to the rider scene:
+
+```sh
+blender --background assets/rider.blend --python tools/export_rider.py
+```
+
+Preserve the rider mesh's point attributes; they carry UVs, material IDs, occlusion
+and the bone indices and weights required by the game.
 
 ## Development
 
 ```text
+assets/          editable Blender scenes
 src/
+  assets/        exported geometry used by the game
   character/    rider geometry, skeleton, cloth, movement and sand contact
   core/         input, camera, settings, solar clock, loading and performance
   post/         post-processing chain
@@ -135,6 +158,7 @@ src/
   terrain/      analytic coast, clipmap and local deformation
   vfx/          pooled spray particles and wake geometry
   world/        ocean and coastal vegetation
+tools/           Blender asset creation and export scripts
 ```
 
 Edit `.glsl` shaders directly. Shared libraries are registered as Babylon shader
