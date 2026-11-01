@@ -52,6 +52,14 @@ build locally; use the address printed in the terminal.
 For static hosting, use **`npm run build`** as the build command and **`dist`** as
 the output directory. The deployed game does not require a backend server.
 
+## Performance and quality
+
+The default balanced profile renders at 85% resolution, uses 1024-pixel shadow and terrain-deformation maps, and disables screen-space reflections. This reduces GPU work while keeping the ocean, vegetation, and temporal antialiasing enabled. Rendering performance depends on the browser and graphics hardware.
+
+For the original higher-cost profile, add `?quality=ultra` to the game URL. Add `?perf` to show frame-time statistics, or combine them as `?quality=ultra&perf` to compare. The overlay shows median FPS, 1% low FPS, 95th-percentile frame time, draw calls, and render resolution; browser background throttling can affect the numbers. Quality is selected at startup, so reload after changing it.
+
+Run `npm test` for the gameplay and quality-setting regression checks.
+
 ## Controls
 
 | Input | Action |

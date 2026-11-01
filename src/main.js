@@ -9,13 +9,14 @@ import { Scene } from "@babylonjs/core/scene";
 import { Vector3, Color3, Color4 } from "@babylonjs/core/Maths/math";
 
 import { registerShaders } from "./shaders/registry.js";
-import { S, onChange } from "./core/settings.js";
+import { S, onChange, applyPreset, PRESETS } from "./core/settings.js";
 import {
     sample, checkSpike, stats, mark, installDrawCounter, endFrameDraws,
 } from "./core/perf.js";
 import { initInput, pollInput, endFrame, input } from "./core/input.js";
 import { CameraRig } from "./core/camera.js";
 import { CharacterController } from "./character/controller.js";
+import { syncWaterSurface } from "./character/waterSurface.js";
 import { Character } from "./character/character.js";
 import { SandContact } from "./character/sandContact.js";
 import { SprayField } from "./vfx/particles.js";
@@ -34,6 +35,8 @@ import * as loading from "./core/loading.js";
 const _vel = new Vector3();
 
 async function boot() {
+    const requestedQuality = new URLSearchParams(location.search).get("quality");
+    if (requestedQuality && Object.hasOwn(PRESETS, requestedQuality)) applyPreset(requestedQuality);
     const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("view"));
 
     await loading.phase("creating WebGL2 context", 0.05);
@@ -180,13 +183,24 @@ async function boot() {
         }
         await loading.nextFrame();
     }
+    // Optional performance readout for profiling without opening devtools.
+    if (new URLSearchParams(location.search).has("perf")) {
+        const readout = document.createElement("output");
+        readout.id = "performance-readout";
+        readout.style.cssText = "position:fixed;top:12px;right:12px;z-index:1000;padding:8px;background:#000c;color:#fff;font:12px monospace;white-space:pre";
+        document.body.appendChild(readout);
+        window.setInterval(() => {
+            readout.textContent = `FPS ${stats.fps.toFixed(1)}  1% low ${stats.fpsLow.toFixed(1)}\nFrame ${stats.median.toFixed(1)} ms  p95 ${stats.p95.toFixed(1)} ms\nDraws ${stats.drawCalls}  ${engine.getRenderWidth()}×${engine.getRenderHeight()}`;
+        }, 1000);
+    }
     // ------------------------------------------------------------- run loop
     let prev = performance.now();
     let time = 0;
 
     engine.runRenderLoop(() => {
         const now = performance.now();
-        let dtMs = now - prev;
+        const frameMs = now - prev;
+        let dtMs = frameMs;
         prev = now;
         const clockDt = S.freezeTime ? 0 : Math.min(dtMs / 1000, 1);
         if (dtMs > 100) dtMs = 100;
@@ -203,8 +217,7 @@ async function boot() {
         if (ocean.isWaterAt(character.position.x, character.position.z)) {
             // Keep the character visually riding the same animated water mesh.
             // The controller's horizontal physics stays on stable mean sea level.
-            character.position.y = groundAt(character.position.x, character.position.z);
-            character.groundY = character.position.y;
+            syncWaterSurface(character, groundAt(character.position.x, character.position.z));
         }
         // Pose and simulate before the contact pass: the footprints are stamped
         // at the boot's actual planted position, which only exists once the
@@ -260,8 +273,8 @@ async function boot() {
             (wake.mesh.isVisible ? wake.mesh.metadata.triangles : 0) +
             spray.liveCount * 2;
 
-        sample(dtMs);
-        checkSpike(dtMs);
+        sample(frameMs);
+        checkSpike(frameMs);
 
         endFrame();
     });

@@ -10,8 +10,9 @@
 /** @type {Record<string, number|boolean|string>} */
 export const S = {
     // ---------------------------------------------------------------- quality
-    preset: "ultra",
-    resolutionScale: 1.0,
+    preset: "balanced",
+    resolutionScale: 0.85,
+    shadowResolution: 1024,
 
     // ------------------------------------------------------------------- sun
     skyMode: "time of day",
@@ -58,7 +59,7 @@ export const S = {
     deformDepth: 1.0,
     deformBerm: 1.0,
     refillRate: 1.0,
-    deformResolution: 2048,
+    deformResolution: 1024,
 
     // ------------------------------------------------------------- snow-surf
     /** Height of the breaking wall thrown by a carve, as a multiple of 1.45 m. */
@@ -87,7 +88,7 @@ export const S = {
 
     // ------------------------------------------------------------------ post
     taa: true,
-    ssr: true,
+    ssr: false,
     dof: false,
     bloom: true,
     grain: true,
@@ -112,14 +113,11 @@ export const S = {
     debugView: "beauty", // beauty | deform | normals | depth | cascades | footprint | fineNormals
 };
 
-/** Quality presets. Only the keys that differ from `ultra` need listing. */
+/** Quality presets, selected at startup before render targets are built. */
 export const PRESETS = {
-    ultra: {},
-    high: { deformResolution: 2048, resolutionScale: 1.0, ssr: true, dof: true },
-    balanced: {
-        deformResolution: 1024, resolutionScale: 0.85,
-        ssr: false, dof: false,
-    },
+    ultra: { deformResolution: 2048, shadowResolution: 2048, resolutionScale: 1.0, ssr: true, dof: false },
+    high: { deformResolution: 2048, shadowResolution: 2048, resolutionScale: 1.0, ssr: true, dof: true },
+    balanced: { deformResolution: 1024, shadowResolution: 1024, resolutionScale: 0.85, ssr: false, dof: false },
 };
 
 /** @type {Map<string, Set<(v:any, k:string) => void>>} */

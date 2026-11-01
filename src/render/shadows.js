@@ -25,9 +25,9 @@ import { RenderTargetTexture } from "@babylonjs/core/Materials/Textures/renderTa
 import { Constants } from "@babylonjs/core/Engines/constants";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { ShaderLanguage } from "@babylonjs/core/Materials/shaderLanguage";
+import { S } from "../core/settings.js";
 
 export const CASCADE_COUNT = 3;
-const RESOLUTION = 2048;
 
 /** Far distance of each cascade, metres. */
 const SPLITS = [26, 95, 330];
@@ -72,8 +72,8 @@ export class ShadowSystem {
         for (let i = 0; i < CASCADE_COUNT; i++) this.splits[i] = SPLITS[i];
         this.splits[3] = SPLITS[CASCADE_COUNT - 1];
 
-        this.texelSize = 1 / RESOLUTION;
-        this.resolution = RESOLUTION;
+        this.resolution = S.shadowResolution;
+        this.texelSize = 1 / this.resolution;
 
         /**
          * Per cascade, as vec4s for the shader: (depth range m, ortho width m,
@@ -88,7 +88,7 @@ export class ShadowSystem {
         for (let i = 0; i < CASCADE_COUNT; i++) {
             const rtt = new RenderTargetTexture(
                 "cascade" + i,
-                { width: RESOLUTION, height: RESOLUTION },
+                { width: this.resolution, height: this.resolution },
                 scene,
                 {
                     generateMipMaps: false,
@@ -286,7 +286,7 @@ export class ShadowSystem {
         // light-space (0, 0, backoff) by construction, so both quantised
         // coordinates are identically zero and the snap does nothing. `_right`
         // and `_lup` are the same orthonormal pair `LookAtLH` rebuilds below.
-        const texelWorld = (radius * 2) / RESOLUTION;
+        const texelWorld = (radius * 2) / this.resolution;
         const cr = Math.floor(Vector3.Dot(_center, _right) / texelWorld) * texelWorld;
         const cu = Math.floor(Vector3.Dot(_center, _lup) / texelWorld) * texelWorld;
         const cf = Vector3.Dot(_center, this.lightDir);
